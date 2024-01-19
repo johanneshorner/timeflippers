@@ -2,6 +2,11 @@ password = [ 0x30, 0x30, 0x30, 0x30, 0x30, 0x30 ]
 brightness = 100
 blink_interval = 30
 auto_pause = 480
+jira_user = "your-user@domain.com"
+jira_token = "your-token"
+jira_base_url = "https://your-domain.atlassian.net"
+jira_board_id = "999"
+jira_jql_issue_filter = ""
 
 [[sides]]
 facet = 1

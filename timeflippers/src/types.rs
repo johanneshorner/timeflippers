@@ -113,7 +113,7 @@ pub enum FacetError {
 }
 
 /// The side of a TimeFlip2.
-#[derive(Debug, Clone, Ord, PartialEq, PartialOrd, Eq)]
+#[derive(Debug, Clone, Ord, PartialEq, PartialOrd, Eq, Hash)]
 pub struct Facet(u8);
 
 impl Facet {
