@@ -1,6 +1,6 @@
 use anyhow::format_err;
 use chrono::{offset::Local, DateTime, NaiveDate};
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use futures::StreamExt;
 use std::{
     io,
@@ -96,6 +96,9 @@ enum Command {
     },
     /// Write config from the toml file to the TimeFlip2's memory.
     WriteConfig,
+    GenerateCompletions {
+        shell: clap_complete::Shell,
+    },
 }
 
 impl Command {
@@ -241,6 +244,14 @@ impl Command {
             WriteConfig => {
                 let config = config.ok_or(format_err!("config is mandatory for this command"))?;
                 timeflip.write_config(config).await?;
+            }
+            GenerateCompletions { shell } => {
+                clap_complete::generate(
+                    *shell,
+                    &mut Options::command(),
+                    "timeflip",
+                    &mut io::stdout(),
+                );
             }
         }
         Ok(())
