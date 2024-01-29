@@ -193,10 +193,10 @@ impl App {
 #[derive(Parser)]
 #[clap(about)]
 struct Options {
-    #[arg(help = "path to the timeflip.toml file")]
-    config: PathBuf,
-    #[arg(help = "read events from and write new events to file")]
-    persistent_file: PathBuf,
+    #[arg(short, long, help = "path to the timeflip.toml file")]
+    config: Option<PathBuf>,
+    #[arg(short, long, help = "read events from and write new events to file")]
+    persistent_file: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -237,7 +237,7 @@ struct MyEntry {
     deleted: bool,
 }
 
-async fn load_history(persistent_file: &PathBuf) -> anyhow::Result<(u32, Vec<MyEntry>)> {
+async fn load_history(persistent_file: impl AsRef<Path>) -> anyhow::Result<(u32, Vec<MyEntry>)> {
     match fs::read_to_string(persistent_file).await {
         Ok(s) => {
             let mut entries: Vec<MyEntry> = serde_json::from_str(&s)?;
@@ -651,8 +651,30 @@ async fn get_bookings_for_date(app: &App, config: &MyConfig, date: &NaiveDate) -
 
 async fn run<B: Backend>(terminal: &mut Terminal<B>, opt: Options) -> anyhow::Result<()> {
     terminal.draw(|f| show_loading_window(f))?;
-    let config = read_config(opt.config).await?;
-    let (mut last_seen, entries) = load_history(&opt.persistent_file).await?;
+    let config_path = opt.config.unwrap_or_else(|| {
+        dirs::config_dir()
+            .expect("a config directory to exist")
+            .join("timeflip/timeflip.toml")
+    });
+    let config = read_config(config_path).await?;
+
+    let persistent_file_path = if let Some(path) = opt.persistent_file {
+        path
+    } else {
+        let persistent_file_path = dirs::data_local_dir()
+            .expect("a config directory to exist")
+            .join("timeflip/persist");
+        if !persistent_file_path.exists() {
+            fs::create_dir_all(
+                persistent_file_path
+                    .parent()
+                    .expect("this path to have a parent, because we just created it"),
+            )
+            .await?;
+        }
+        persistent_file_path
+    };
+    let (mut last_seen, entries) = load_history(&persistent_file_path).await?;
 
     let (mut bg_task, session) = BluetoothSession::new().await?;
     let timeflip = TimeFlip::connect(&session, Some(config.timeflip.password)).await?;
@@ -750,7 +772,7 @@ async fn run<B: Backend>(terminal: &mut Terminal<B>, opt: Options) -> anyhow::Re
                                     match key.code {
                                         KeyCode::Char('q') => {
                                             let entries: Vec<MyEntry> = app.entries.into_values().collect();
-                                            persist_history(&opt.persistent_file, &entries).await?;
+                                            persist_history(&persistent_file_path, &entries).await?;
                                             return Ok(())
                                         },
                                         KeyCode::Char('p') => {

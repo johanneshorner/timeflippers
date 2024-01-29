@@ -263,7 +263,20 @@ async fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     let opt = Options::parse();
-    let config = if let Some(path) = opt.config {
+    let config_path = if opt.config.is_some() {
+        opt.config
+    } else {
+        let path = dirs::config_dir()
+            .expect("a config directory to exist")
+            .join("timeflip/timeflip.toml");
+
+        if path.exists() {
+            Some(path)
+        } else {
+            None
+        }
+    };
+    let config = if let Some(path) = config_path {
         Some(read_config(path).await?)
     } else {
         None

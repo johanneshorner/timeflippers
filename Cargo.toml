@@ -4,3 +4,6 @@ members = [
     "timekeeper",
 ]
 resolver = "2"
+
+[workspace.dependencies]
+dirs = "5.0.1"
