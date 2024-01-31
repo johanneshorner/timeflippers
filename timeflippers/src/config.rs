@@ -48,6 +48,30 @@ pub struct Config {
     pub sides: [Side; 12],
 }
 
+// TODO: understand how this is supposed to work
+// impl<'de> Deserialize<'de> for Config {
+//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//     where
+//         D: de::Deserializer<'de>,
+//     {
+//         let password = <[u8; 6]>::deserialize(deserializer).unwrap();
+//         let brightness = Percent::deserialize(deserializer).unwrap();
+//         let blink_interval = BlinkInterval::deserialize(deserializer).unwrap();
+//         let auto_pause = Minutes::deserialize(deserializer).unwrap();
+//         let pause_facet = Option::<Facet>::deserialize(deserializer).unwrap();
+//         let sides = deserialize_sides(deserializer).unwrap();
+//
+//         Ok(Config {
+//             password,
+//             brightness,
+//             blink_interval,
+//             auto_pause,
+//             pause_facet,
+//             sides,
+//         })
+//     }
+// }
+
 impl Default for Config {
     fn default() -> Self {
         Config {

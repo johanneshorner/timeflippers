@@ -173,6 +173,8 @@ pub enum FacetTask {
     Simple,
     /// Pomodoro timer with limit in seconds.
     Pomodoro(u32),
+    /// Used to pause the timeflip
+    Pause,
 }
 
 impl fmt::Display for FacetTask {
@@ -180,6 +182,7 @@ impl fmt::Display for FacetTask {
         match self {
             FacetTask::Simple => write!(f, "Simple"),
             FacetTask::Pomodoro(s) => write!(f, "Pomodoro Timer ({s} seconds)"),
+            FacetTask::Pause => write!(f, "Pause"),
         }
     }
 }
