@@ -17,7 +17,7 @@ use crate::{
 };
 
 mod gatt;
-pub use gatt::{Entry, Event, FacetSettings, SyncState, SyncType, SystemStatus};
+pub use gatt::{Entry, Entry2, Event, FacetSettings, SyncState, SyncType, SystemStatus};
 
 /// Error for communication with TimeFlip2.
 #[allow(missing_docs)]

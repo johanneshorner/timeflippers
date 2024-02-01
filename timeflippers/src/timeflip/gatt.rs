@@ -506,6 +506,28 @@ pub struct Entry {
     pub duration: Duration,
 }
 
+/// An entry from TimeFlip2's history.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Entry2 {
+    /// ID of the entry.
+    pub id: u32,
+    // pub facet: super::Facet,
+    // pub pause: bool,
+    // pub time: DateTime<Utc>,
+    // pub duration: Duration,
+}
+
+impl From<Entry> for Entry2 {
+    fn from(value: Entry) -> Self {
+        Self {
+            id: value.id,
+            // pause: value.pause,
+            // time: value.time,
+            // duration: value.duration,
+        }
+    }
+}
+
 impl Entry {
     /// Construct a [Entry] from the data read from [Characteristic::History].
     pub fn from_data(mut data: &[u8]) -> Result<Entry, EntryError> {
