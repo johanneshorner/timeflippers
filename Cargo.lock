@@ -1451,6 +1451,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "timeclerk"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bluez-async",
+ "bytes",
+ "chrono",
+ "clap",
+ "clap_complete",
+ "dirs",
+ "env_logger",
+ "futures",
+ "log",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "timeflippers",
+ "tokio",
+ "toml",
+ "uuid",
+]
+
+[[package]]
 name = "timeflippers"
 version = "0.1.0"
 dependencies = [

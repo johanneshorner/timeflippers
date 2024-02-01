@@ -2,6 +2,7 @@
 members = [
     "timeflippers",
     "timekeeper",
+    "timeclerk"
 ]
 resolver = "2"
 
