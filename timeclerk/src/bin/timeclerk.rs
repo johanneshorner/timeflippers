@@ -1,12 +1,11 @@
 use anyhow::{bail, format_err};
-use async_tempfile::TempFile;
 use chrono::{offset::Local, DateTime, NaiveDate, Utc};
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::{
-    borrow::BorrowMut,
     io,
     path::{Path, PathBuf},
+    time::Duration,
 };
 use timeflippers::{
     timeflip::{Entry, TimeFlip},
@@ -14,7 +13,7 @@ use timeflippers::{
 };
 use tokio::{
     fs,
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
     process, select, signal,
 };
 
@@ -24,9 +23,10 @@ async fn read_config(path: impl AsRef<Path>) -> anyhow::Result<Config> {
     Ok(config)
 }
 
-fn facet_name(facet: &Facet, config: Option<&Config>) -> String {
-    config
-        .and_then(|config| config.sides[facet.index_zero()].name.clone())
+fn facet_name(facet: &Facet, config: &Config) -> String {
+    config.sides[facet.index_zero()]
+        .name
+        .clone()
         .unwrap_or(facet.to_string())
 }
 
@@ -41,17 +41,15 @@ async fn load_history(history_file: impl AsRef<Path>) -> anyhow::Result<Vec<Entr
     }
 }
 
-async fn persist_history(history_file: &PathBuf, entries: &[EntryEdit]) -> anyhow::Result<()> {
-    match serde_yaml::to_string(&entries) {
-        Ok(content) => {
-            if let Err(e) = fs::write(&history_file, content).await {
-                bail!("cannot update entries file {}: {e}", history_file.display());
-            } else {
-                Ok(())
-            }
-        }
-        Err(e) => bail!("cannot update entries file {}: {e}", history_file.display()),
-    }
+async fn append_history(history_file: &PathBuf, entries: &[EntryEdit]) -> anyhow::Result<()> {
+    let content = serde_yaml::to_string(&entries)?;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&history_file)
+        .await?;
+    file.write(content.as_bytes()).await?;
+    Ok(())
 }
 
 /// Communicate with a TimeFlip2 cube.
@@ -114,7 +112,7 @@ struct EntryEdit {
     /// ID of the entry.
     pub id: u32,
     /// Active facet.
-    pub facet: Facet,
+    pub facet: String,
     /// The time the dice was flipped.
     pub start_time: DateTime<Utc>,
     /// The time the dice was flipped to a different facet.
@@ -123,11 +121,19 @@ struct EntryEdit {
     pub description: String,
 }
 
+impl EntryEdit {
+    fn from_entry_with_config(entry: &Entry, config: &Config) -> Self {
+        let mut entry_edit: EntryEdit = entry.into();
+        entry_edit.facet = facet_name(&entry.facet, config);
+        entry_edit
+    }
+}
+
 impl From<Entry> for EntryEdit {
     fn from(value: Entry) -> Self {
         Self {
             id: value.id,
-            facet: value.facet,
+            facet: value.facet.to_string(),
             start_time: value.time,
             end_time: value.time + value.duration,
             description: String::new(),
@@ -139,7 +145,7 @@ impl From<&Entry> for EntryEdit {
     fn from(value: &Entry) -> Self {
         Self {
             id: value.id,
-            facet: value.facet.clone(),
+            facet: value.facet.to_string(),
             start_time: value.time,
             end_time: value.time + value.duration,
             description: String::new(),
@@ -232,12 +238,14 @@ impl Command {
                 end_id,
                 ..
             }) => {
+                let config = config.ok_or(format_err!("config is mandatory for this command"))?;
+
                 let history_file_path = if let Some(path) = history_file {
                     path.to_owned()
                 } else {
                     let history_file_path = dirs::data_local_dir()
                         .expect("a config directory to exist")
-                        .join("timeflip/persist");
+                        .join("timeclerk/persist.yaml");
                     if !history_file_path.exists() {
                         fs::create_dir_all(
                             history_file_path
@@ -250,28 +258,58 @@ impl Command {
                 };
                 let history = load_history(&history_file_path).await?;
 
-                let start_id = start_id.unwrap_or(history.last().unwrap().id + 1 as u32);
-                println!("{start_id}");
+                let start_id = start_id.unwrap_or_else(|| {
+                    if let Some(entry) = history.last() {
+                        entry.id + 1
+                    } else {
+                        1
+                    }
+                });
 
                 let update = timeflip.read_history_since(start_id).await?;
-                let entries: Vec<EntryEdit> = update.iter().map(|e| e.into()).collect();
+                let entries: Vec<EntryEdit> = update
+                    .iter()
+                    .map(|e| EntryEdit::from_entry_with_config(e, &config))
+                    .collect();
                 let content = serde_yaml::to_string(&entries)?;
-                let mut tempfile = TempFile::new().await?;
-                let tempfile_path = tempfile.file_path().to_owned();
-                let file: &mut fs::File = tempfile.borrow_mut();
 
-                file.write_all(content.as_bytes()).await?;
+                // TODO: create with uuid as file name
+                let temp_file_path = dirs::cache_dir()
+                    .expect("a cache dir to exist")
+                    .join("timeclerk/edit.yaml");
+                if !temp_file_path.exists() {
+                    fs::create_dir_all(
+                        temp_file_path
+                            .parent()
+                            .expect("this path to have a parent, because we just created it"),
+                    )
+                    .await?;
+                }
+                let mut temp_file = fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .create_new(true)
+                    .open(&temp_file_path)
+                    .await?;
+                temp_file.write(content.as_bytes()).await?;
 
                 process::Command::new(editor)
-                    .arg(tempfile_path)
+                    .arg(&temp_file_path)
                     .status()
                     .await?;
+                tokio::time::sleep(Duration::from_secs(5)).await;
 
+                // For some reason the content buffer is empty after the read call
                 let mut content = String::new();
-                file.read_to_string(&mut content).await?;
-                let entries: Vec<EntryEdit> = serde_yaml::from_str(&content)?;
+                temp_file.sync_data().await?;
+                temp_file.seek(io::SeekFrom::Start(0)).await?;
+                let bytes_read = temp_file.read_to_string(&mut content).await?;
+                println!("{bytes_read}");
+                let new_entries: Vec<EntryEdit> = serde_yaml::from_str(&content)?;
+                println!("{:?}", new_entries.last().unwrap());
+                // history.extend(new_entries.into_iter());
                 // TODO processing
-                persist_history(&history_file_path, &entries).await?
+                append_history(&history_file_path, &new_entries).await?
             }
             GenerateCompletions { shell } => {
                 clap_complete::generate(
